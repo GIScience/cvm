@@ -32,20 +32,91 @@ library(tidyverse)
 library(spatstat)
 library(ggeffects)
 library(tmap)
+library(osmdata)
+library(DT)
 ```
 
 ## Data download & preprocess
 
-```{r read in data}
+```{r read in data, warning=F}
+# read in localy
+# cvm <- st_read("cvm_data.gpkg", layer = "cvm", quiet=T)
+# schools <- st_read("cvm_data.gpkg", layer = "schools", quiet=T)
+# kindergartens <- st_read("cvm_data.gpkg", layer = "kindergarten", quiet=T)
+# hd_boundary <- st_read("cvm_data.gpkg", layer = "hd bound", quiet=T)
 
-cvm <- st_read("cvm_data.gpkg", layer = "cvm", quiet=T)
-schools <- st_read("cvm_data.gpkg", layer = "schools", quiet=T)
-kindergartens <- st_read("cvm_data.gpkg", layer = "kindergarten", quiet=T)
-hd_boundary <- st_read("cvm_data.gpkg", layer = "hd bound", quiet=T)
+# query osm via overpass
+hd_boundary <- opq(bbox = 'Heidelberg, Germany') |>
+  add_osm_feature(key = 'name', value = 'Heidelberg') |>
+  add_osm_feature(key = 'admin_level', value = '6') |>
+  osmdata_sf()
+hd_boundary <- hd_boundary$osm_multipolygons
+
+cvm <- opq(bbox = 'Heidelberg, Germany') |>
+  add_osm_feature(key = 'vending', value = 'cigarettes') |>
+  osmdata_sf()
+cvm <- cvm$osm_points
+
+osm_schools <- opq(bbox = 'Heidelberg, Germany') |>
+  add_osm_feature(key = 'amenity', value = 'school') |>
+  osmdata_sf()
+
+osm_kindergarten <- opq(bbox = 'Heidelberg, Germany') |>
+  add_osm_feature(key = 'amenity', value = 'kindergarten') |>
+  osmdata_sf()
+
+
+
+
+# Check for overlaps. Are schools/kindergartens all mapped with their building footprint or do we see some mapped as points only
+
+# How many school points do not overlap with school polygons
+osm_schools$osm_points |> 
+  filter(!st_intersects(osm_schools$osm_polygons$geometry |> st_union(), sparse=F)) |> 
+  nrow()
+
+# How many school polygons do not overlap with school multipolygons/relations
+osm_schools$osm_polygons |> 
+  st_point_on_surface() |> 
+  filter(!st_intersects(osm_schools$osm_multipolygons$geometry |> st_union(), sparse=F)) |> nrow()
+
+# How many kindergarten points do not overlap with kindergarten polygons
+osm_kindergarten$osm_points |> 
+  filter(!st_intersects(osm_schools$osm_polygons$geometry |> st_union(), sparse=F)) |> 
+  nrow()
+
+# How many kindergarten polygons do not overlap with kindergarten multipolygons/relations
+osm_kindergarten$osm_polygons |> 
+  st_point_on_surface() |> 
+  filter(!st_intersects(osm_schools$osm_multipolygons$geometry |> st_union(), sparse=F)) |> nrow()
+
+# overview on types and objects
+datatable(data.frame(object=c(rep("kindergarten",3),rep("school",3)),type=rep(c("nodes","ways","relations"),2), n=c(osm_kindergarten$osm_lines |> nrow(), osm_kindergarten$osm_polygons |> nrow(), osm_kindergarten$osm_multipolygons |> nrow(), osm_schools$osm_points |> nrow(), osm_schools$osm_polygons |> nrow(), osm_schools$osm_multipolygons |> nrow())))
+
+
+# generate the centroid/point of surface for all school and kindergarten buildings
+schools <- osm_schools$osm_polygons |> st_point_on_surface() |>
+  filter(st_intersects(geometry, hd_boundary$geometry, sparse=F))
+kindergartens <- osm_kindergarten$osm_polygons |> st_point_on_surface() |>
+  filter(st_intersects(geometry, hd_boundary$geometry, sparse=F))
 
 ```
 
-Data was preprocess in QGIS as of now.
+OpenStreetMap (OSM) is a collaborative map of the world created by people like you and me. The data model of OpenStreetMap consists of three main elements: nodes, ways, and relations.
+
+-   *Nodes*: Nodes are the basic building blocks of the map. Think of them as small points on the map representing specific geographic features, such as a single tree, a streetlamp, a shop, or even a significant landmark like the Eiffel Tower. Each node is defined by its unique latitude and longitude coordinates, which pinpoint its exact location on the Earth's surface.
+
+-   *Ways*: Ways are like paths or lines connecting multiple nodes. They represent linear features like roads, rivers, railway tracks, and footpaths. A way is created by connecting multiple nodes in sequence. For example, a road can be represented as a way by connecting a series of nodes that follow the path of the road.
+
+-   *Relations*: Relations are a way to describe more complex and interconnected features on the map. They group multiple nodes, ways, or even other relations together to represent things like bus routes, building outlines, or multi-part structures. Relations allow us to create more detailed and organized representations of the real world.
+
+Example of a school relation in Heidelberg is the _Kurfürst-Friedrich-Gymnasium_ which has 5 buildings and two distinct locations (https://www.openstreetmap.org/relation/13561009)
+
+Amount of school buildings in Heidelberg: `r nrow(schools)`
+
+Amount of kindergarten buildings in Heidelberg: `r nrow(kindergartens)`
+
+Amount of cigarette vending machines: `r nrow(cvm)`
 
 # ESDA
 
@@ -59,21 +130,17 @@ dist_mat_kindergartens <- st_distance(kindergartens, cvm)
 distinct_min_schools <- apply(dist_mat_schools, 1, min)
 distinct_min_kindergartens <- apply(dist_mat_kindergartens, 1, min)
 
+
 ```
 
-
-
-| Type         | Extreme | Distance                                     |
-|--------------|---------|----------------------------------------------|
-| kindergarte  | min     | `r min(distinct_min_kindergartens) |> round(3)`          |
+| Type         | Extreme | Distance                                        |
+|--------------|---------|-------------------------------------------------|
+| kindergarte  | min     | `r min(distinct_min_kindergartens) |> round(3)` |
 | kindergarten | max     | `r max(distinct_min_kindergartens) |> round(3)` |
-| school       | min     | `r min(distinct_min_schools) |> round(3)`          |
-| school       | min     | `r max(distinct_min_schools) |> round(3)`                |
+| school       | min     | `r min(distinct_min_schools) |> round(3)`       |
+| school       | min     | `r max(distinct_min_schools) |> round(3)`       |
 
-
-Furthest distance towards a CVM is ~ 2600 Meter.
-We create a continuous dataframe with values from 0 to 2600 Meter and add cumulative counts for CVM within the respective distance to/from schools/kindergartens.
-
+Furthest distance towards a CVM is \~ 2600 Meter. We create a continuous dataframe with values from 0 to 2600 Meter and add cumulative counts for CVM within the respective distance to/from schools/kindergartens.
 
 ```{r data crunch}
 breaks <- seq(0, 2600, by = 1)  # Adjust the 'by' value as per your requirement
@@ -91,10 +158,7 @@ result_df <- result_df |>
 
 ```
 
-
 # Viz
-
-
 
 ```{r simple plot}
 plot(result_df$distance, result_df$cvm_count_kindergartens_cum, type = "l", col = "blue", lwd = 2,
@@ -126,8 +190,6 @@ result_df |>
 
 ```
 
-
-
 ```{r map, fig.width=6}
 tmap_mode("view")
 
@@ -155,8 +217,6 @@ tm_basemap("OpenStreetMap") +
 
 ```
 
-
-
 # Model
 
 ```{r poisson regression}
@@ -171,7 +231,6 @@ ggpredict(kindergarten_m)
 
 ```
 
-
 ```{r point pattern}
 
 cvm_ppp <- cvm |> st_transform(25832) |> as.ppp()
@@ -185,4 +244,3 @@ plot(ripley_K, main = "Ripley's K Function")
 ```
 
 The K function indicates the location of CVMs are not subject to complete spatial randomness, but are clustered.
-
