@@ -4,9 +4,11 @@ author: "Marcel Reinmuth"
 date: "`r Sys.Date()`"
 output: 
   html_document:
+    code_folding: hide
     toc: true
     number_sections: true
-    toc_float: true
+    toc_float:
+      collapsed: false
     theme: cerulean
 ---
 
@@ -71,24 +73,24 @@ osm_kindergarten <- opq(bbox = 'Heidelberg, Germany') |>
 # Check for overlaps. Are schools/kindergartens all mapped with their building footprint or do we see some mapped as points only
 
 # How many school points do not overlap with school polygons
-osm_schools$osm_points |> 
-  filter(!st_intersects(osm_schools$osm_polygons$geometry |> st_union(), sparse=F)) |> 
-  nrow()
-
-# How many school polygons do not overlap with school multipolygons/relations
-osm_schools$osm_polygons |> 
-  st_point_on_surface() |> 
-  filter(!st_intersects(osm_schools$osm_multipolygons$geometry |> st_union(), sparse=F)) |> nrow()
-
-# How many kindergarten points do not overlap with kindergarten polygons
-osm_kindergarten$osm_points |> 
-  filter(!st_intersects(osm_schools$osm_polygons$geometry |> st_union(), sparse=F)) |> 
-  nrow()
-
-# How many kindergarten polygons do not overlap with kindergarten multipolygons/relations
-osm_kindergarten$osm_polygons |> 
-  st_point_on_surface() |> 
-  filter(!st_intersects(osm_schools$osm_multipolygons$geometry |> st_union(), sparse=F)) |> nrow()
+# osm_schools$osm_points |> 
+#   filter(!st_intersects(osm_schools$osm_polygons$geometry |> st_union(), sparse=F)) |> 
+#   nrow()
+# 
+# # How many school polygons do not overlap with school multipolygons/relations
+# osm_schools$osm_polygons |> 
+#   st_point_on_surface() |> 
+#   filter(!st_intersects(osm_schools$osm_multipolygons$geometry |> st_union(), sparse=F)) |> nrow()
+# 
+# # How many kindergarten points do not overlap with kindergarten polygons
+# osm_kindergarten$osm_points |> 
+#   filter(!st_intersects(osm_schools$osm_polygons$geometry |> st_union(), sparse=F)) |> 
+#   nrow()
+# 
+# # How many kindergarten polygons do not overlap with kindergarten multipolygons/relations
+# osm_kindergarten$osm_polygons |> 
+#   st_point_on_surface() |> 
+#   filter(!st_intersects(osm_schools$osm_multipolygons$geometry |> st_union(), sparse=F)) |> nrow()
 
 # overview on types and objects
 datatable(data.frame(object=c(rep("kindergarten",3),rep("school",3)),type=rep(c("nodes","ways","relations"),2), n=c(osm_kindergarten$osm_lines |> nrow(), osm_kindergarten$osm_polygons |> nrow(), osm_kindergarten$osm_multipolygons |> nrow(), osm_schools$osm_points |> nrow(), osm_schools$osm_polygons |> nrow(), osm_schools$osm_multipolygons |> nrow())))
@@ -99,7 +101,8 @@ schools <- osm_schools$osm_polygons |> st_point_on_surface() |>
   filter(st_intersects(geometry, hd_boundary$geometry, sparse=F))
 kindergartens <- osm_kindergarten$osm_polygons |> st_point_on_surface() |>
   filter(st_intersects(geometry, hd_boundary$geometry, sparse=F))
-
+cvm <- cvm |>
+  filter(st_intersects(geometry, hd_boundary$geometry, sparse=F))
 ```
 
 OpenStreetMap (OSM) is a collaborative map of the world created by people like you and me. The data model of OpenStreetMap consists of three main elements: nodes, ways, and relations.
@@ -110,7 +113,7 @@ OpenStreetMap (OSM) is a collaborative map of the world created by people like y
 
 -   *Relations*: Relations are a way to describe more complex and interconnected features on the map. They group multiple nodes, ways, or even other relations together to represent things like bus routes, building outlines, or multi-part structures. Relations allow us to create more detailed and organized representations of the real world.
 
-Example of a school relation in Heidelberg is the _Kurfürst-Friedrich-Gymnasium_ which has 5 buildings and two distinct locations (https://www.openstreetmap.org/relation/13561009)
+Example of a school relation in Heidelberg is the *Kurfürst-Friedrich-Gymnasium* which has 5 buildings and two distinct locations (<https://www.openstreetmap.org/relation/13561009>)
 
 Amount of school buildings in Heidelberg: `r nrow(schools)`
 
@@ -177,7 +180,7 @@ legend("topleft", legend = c("kindergartens", "schools"), col = c("blue", "green
 
 ```
 
-The first plot indicates a steep growth in CVM locations within 0 - 500 meters distance to/from schools & kindergartens. However when zoomed in we see less than 10 schools and less than 30 kindergartens are within the first 100m.
+The first plot indicates a steep growth in CVM locations within 0 - 500 meters distance to/from schools & kindergartens. However when zoomed in we see minimal growth in school locations but some growth in kindergarten locations below 100m.
 
 But how many are exactly within 100m?
 
